@@ -111,61 +111,55 @@ export default function Historico() {
         </div>
       ) : (
         pedidos.map((pedido) => (
-          <div
-            key={pedido.id}
-            className="lista-item"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={selecionados.includes(pedido.id)}
-              onChange={() => toggleSelecionado(pedido.id)}
-            />
+          <div key={pedido.id} className="lista-item historico-item">
+  <div className="historico-topo">
+    <input
+      type="checkbox"
+      checked={selecionados.includes(pedido.id)}
+      onChange={() => toggleSelecionado(pedido.id)}
+    />
 
-            <div style={{ flex: 1 }}>
-              <div className="info-principal">
-                {pedido.clientes?.nome || 'Cliente removido'}
-              </div>
+    <div className="historico-info">
+      <div className="info-principal">
+        {pedido.clientes?.nome || 'Cliente removido'}
+      </div>
 
-              <div className="info-secundaria">
-                {formatarDataHora(pedido.created_at)} • {pedido.pedido_itens?.length || 0} itens
-              </div>
-            </div>
+      <div className="info-secundaria">
+        {formatarDataHora(pedido.created_at)} • {pedido.pedido_itens?.length || 0} itens
+      </div>
+    </div>
+  </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <strong>{formatarMoeda(pedido.total)}</strong>
+  <div className="historico-acoes">
+    <strong className="historico-total">{formatarMoeda(pedido.total)}</strong>
 
-              <button className="btn btn-outline" onClick={() => setPedidoDetalhe(pedido)}>
-                Ver
-              </button>
+    <button className="btn btn-outline" onClick={() => setPedidoDetalhe(pedido)}>
+      Ver
+    </button>
 
-              <button
-  className="btn btn-primario"
-  onClick={() => navigate(`/pedido-novo/${pedido.id}`)}
->
-  Editar
-</button>
+    <button
+      className="btn btn-primario"
+      onClick={() => navigate(`/pedido-novo/${pedido.id}`)}
+    >
+      Editar
+    </button>
 
-              <button className="btn btn-secundario" onClick={() => baixarPdfPedido(pedido)}>
-                PDF
-              </button>
+    <button className="btn btn-secundario" onClick={() => baixarPdfPedido(pedido)}>
+      PDF
+    </button>
 
-              <button
-                className="btn btn-sucesso"
-                onClick={() => abrirWhatsApp(pedido, pedido.clientes?.telefone)}
-              >
-                WhatsApp
-              </button>
+    <button
+      className="btn btn-sucesso"
+      onClick={() => abrirWhatsApp(pedido, pedido.clientes?.telefone)}
+    >
+      WhatsApp
+    </button>
 
-              <button className="btn btn-perigo" onClick={() => setPedidoParaExcluir(pedido)}>
-                Excluir
-              </button>
-            </div>
-          </div>
+    <button className="btn btn-perigo" onClick={() => setPedidoParaExcluir(pedido)}>
+      Excluir
+    </button>
+  </div>
+</div>
         ))
       )}
 
