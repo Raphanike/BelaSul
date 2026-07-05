@@ -3,12 +3,12 @@ import { formatarMoeda, formatarQuantidade, formatarDataHora } from './formatter
 function normalizarTelefoneWhatsApp(telefone) {
   let numero = String(telefone || '').replace(/\D/g, '')
 
-  // Remove zero inicial, se tiver
+  // Remove zeros no começo
   numero = numero.replace(/^0+/, '')
 
   if (!numero) return ''
 
-  // Se já tiver código do Brasil, não adiciona de novo
+  // Se já começa com 55, não coloca 55 de novo
   if (numero.startsWith('55')) {
     return numero
   }
@@ -20,7 +20,7 @@ function montarLinhaItem(item) {
   const tipoVenda = item.tipo_venda || 'peso'
   const unidade = item.unidade || (tipoVenda === 'peso' ? 'kg' : 'un')
 
-  const quantidadeCalculada = formatarQuantidade(
+  const quantidadeFormatada = formatarQuantidade(
     item.quantidade,
     tipoVenda,
     unidade
@@ -33,12 +33,13 @@ function montarLinhaItem(item) {
       ? `${item.quantidade_unidades} un • `
       : ''
 
-  const rotuloQuantidade = tipoVenda === 'peso' ? 'Peso' : 'Qtd'
+  const rotulo = tipoVenda === 'peso' ? 'Peso' : 'Qtd'
 
   return (
     `• ${item.nome_produto}\n` +
-    `  ${unidadesFisicas}${rotuloQuantidade}: ${quantidadeCalculada}\n` +
-    `  Valor: ${formatarMoeda(item.preco_unitario)} = ${formatarMoeda(item.subtotal)}`
+    `  ${unidadesFisicas}${rotulo}: ${quantidadeFormatada}\n` +
+    `  Valor unit.: ${formatarMoeda(item.preco_unitario)}\n` +
+    `  Subtotal: ${formatarMoeda(item.subtotal)}`
   )
 }
 
@@ -50,7 +51,7 @@ export function montarMensagemPedido(pedido) {
   const linhasItens = itens.map(montarLinhaItem).join('\n\n')
 
   const total =
-    pedido.total ?? itens.reduce((acc, i) => acc + Number(i.subtotal || 0), 0)
+    pedido.total ?? itens.reduce((acc, item) => acc + Number(item.subtotal || 0), 0)
 
   return (
     `*BELA SUL - Comercial de Alimentos*\n` +
@@ -64,12 +65,19 @@ export function montarMensagemPedido(pedido) {
 }
 
 export function abrirWhatsApp(pedido, telefone = '') {
-  const mensagem = montarMensagemPedido(pedido)
-  const numeroLimpo = normalizarTelefoneWhatsApp(telefone)
+  try {
+    const mensagem = montarMensagemPedido(pedido)
+    const numeroLimpo = normalizarTelefoneWhatsApp(telefone)
 
-  const url = numeroLimpo
-    ? `https://wa.me/${numeroLimpo}?text=${encodeURIComponent(mensagem)}`
-    : `https://wa.me/?text=${encodeURIComponent(mensagem)}`
+    const texto = encodeURIComponent(mensagem)
 
-  window.open(url, '_blank')
+    const url = numeroLimpo
+      ? `https://api.whatsapp.com/send?phone=${numeroLimpo}&text=${texto}`
+      : `https://api.whatsapp.com/send?text=${texto}`
+
+    window.location.href = url
+  } catch (error) {
+    console.error('Erro ao abrir WhatsApp:', error)
+    alert('Não foi possível abrir o WhatsApp. Verifique os dados do pedido.')
+  }
 }
