@@ -3,12 +3,10 @@ import { formatarMoeda, formatarQuantidade, formatarDataHora } from './formatter
 function normalizarTelefoneWhatsApp(telefone) {
   let numero = String(telefone || '').replace(/\D/g, '')
 
-  // Remove zeros no começo
   numero = numero.replace(/^0+/, '')
 
   if (!numero) return ''
 
-  // Se já começa com 55, não coloca 55 de novo
   if (numero.startsWith('55')) {
     return numero
   }
@@ -38,8 +36,7 @@ function montarLinhaItem(item) {
   return (
     `• ${item.nome_produto}\n` +
     `  ${unidadesFisicas}${rotulo}: ${quantidadeFormatada}\n` +
-    `  Valor unit.: ${formatarMoeda(item.preco_unitario)}\n` +
-    `  Subtotal: ${formatarMoeda(item.subtotal)}`
+    `  Unit.: ${formatarMoeda(item.preco_unitario)} | Subtotal: ${formatarMoeda(item.subtotal)}`
   )
 }
 
@@ -64,18 +61,42 @@ export function montarMensagemPedido(pedido) {
   )
 }
 
-export function abrirWhatsApp(pedido, telefone = '') {
+export async function abrirWhatsApp(pedido, telefone = '') {
   try {
     const mensagem = montarMensagemPedido(pedido)
     const numeroLimpo = normalizarTelefoneWhatsApp(telefone)
 
     const texto = encodeURIComponent(mensagem)
 
-    const url = numeroLimpo
-      ? `https://api.whatsapp.com/send?phone=${numeroLimpo}&text=${texto}`
-      : `https://api.whatsapp.com/send?text=${texto}`
+    const urlComTexto = numeroLimpo
+      ? `https://wa.me/${numeroLimpo}?text=${texto}`
+      : `https://wa.me/?text=${texto}`
 
-    window.location.href = url
+    const urlSemTexto = numeroLimpo
+      ? `https://wa.me/${numeroLimpo}`
+      : `https://wa.me/`
+
+    // Segurança: se o pedido tiver muitos itens, a URL pode ficar grande demais.
+    // Nesse caso copia a mensagem e abre o WhatsApp sem texto.
+    if (urlComTexto.length > 1800) {
+      try {
+        await navigator.clipboard.writeText(mensagem)
+        alert('O pedido é grande. Copiei a mensagem. Quando o WhatsApp abrir, é só colar e enviar.')
+      } catch {
+        alert('O pedido é grande. Se o WhatsApp não levar a mensagem, copie o pedido manualmente.')
+      }
+
+      window.location.href = urlSemTexto
+      return
+    }
+
+    // Tenta abrir em nova aba.
+    const janela = window.open(urlComTexto, '_blank')
+
+    // Se o navegador bloquear popup, abre na mesma aba.
+    if (!janela) {
+      window.location.href = urlComTexto
+    }
   } catch (error) {
     console.error('Erro ao abrir WhatsApp:', error)
     alert('Não foi possível abrir o WhatsApp. Verifique os dados do pedido.')
