@@ -67,8 +67,9 @@ body: (pedido.pedido_itens || []).map(i => {
   const unidade = i.unidade || (tipoVenda === 'peso' ? 'kg' : 'un')
 
   return [
-    i.nome_produto,
-    `${i.quantidade_unidades || 1} un / ${formatarQuantidade(
+    i.observacao ? `${i.nome_produto}\nObs.: ${i.observacao}` : i.nome_produto,
+    `Quantia: ${i.quantidade_unidades || 1}
+${formatarQuantidade(
       i.quantidade,
       tipoVenda,
       unidade

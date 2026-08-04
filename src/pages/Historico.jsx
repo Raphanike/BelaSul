@@ -4,7 +4,7 @@ import Layout from '../components/Layout'
 import Loading from '../components/Loading'
 import ConfirmacaoModal from '../components/ConfirmacaoModal'
 import Modal from '../components/Modal'
-import { listarPedidos, excluirPedido } from '../services/pedidosService'
+import { listarPedidos, excluirPedido, marcarStatusPedido } from '../services/pedidosService'
 import { formatarMoeda, formatarDataHora, formatarQuantidade } from '../utils/formatters'
 import { baixarPdfPedido } from '../utils/pdfPedido'
 import { abrirWhatsApp } from '../utils/whatsapp'
@@ -43,6 +43,28 @@ export default function Historico() {
     await excluirPedido(pedidoParaExcluir.id)
     setPedidoParaExcluir(null)
     carregar()
+  }
+
+  async function handleToggleEnviado(pedido) {
+    const statusAtual = pedido.status === 'feito' ? 'feito' : 'pendente'
+    const novoStatus = statusAtual === 'feito' ? 'pendente' : 'feito'
+
+    // Atualização otimista: muda na tela na hora, sem esperar o servidor.
+    setPedidos((atual) =>
+      atual.map((p) => (p.id === pedido.id ? { ...p, status: novoStatus } : p))
+    )
+
+    try {
+      await marcarStatusPedido(pedido.id, novoStatus)
+    } catch (err) {
+      // Se der erro, desfaz a mudança na tela.
+      setPedidos((atual) =>
+        atual.map((p) =>
+          p.id === pedido.id ? { ...p, status: statusAtual } : p
+        )
+      )
+      alert('Não foi possível atualizar o status. Tente novamente.')
+    }
   }
 
   const totalGeral = pedidos.reduce((acc, p) => acc + Number(p.total || 0), 0)
@@ -127,6 +149,17 @@ export default function Historico() {
       <div className="info-secundaria">
         {formatarDataHora(pedido.created_at)} • {pedido.pedido_itens?.length || 0} itens
       </div>
+
+      <label className="check-enviado">
+        <input
+          type="checkbox"
+          checked={pedido.status === 'feito'}
+          onChange={() => handleToggleEnviado(pedido)}
+        />
+        <span className={pedido.status === 'feito' ? 'tag-enviado' : 'tag-pendente'}>
+          {pedido.status === 'feito' ? '✅ Pedido Enviado' : '⏳ Pedido Não Enviado'}
+        </span>
+      </label>
     </div>
   </div>
 
@@ -172,19 +205,31 @@ export default function Historico() {
           <div>
             <p>{formatarDataHora(pedidoDetalhe.created_at)}</p>
 
-          {pedidoDetalhe.pedido_itens?.map((item) => (
-  <div key={item.id} className="item-carrinho">
-    <div>
-      <strong>{item.nome_produto}</strong>
+            {pedidoDetalhe.observacao && (
+              <div className="observacao-historico" style={{ marginBottom: 14 }}>
+                📝 <strong>Observação do pedido:</strong> {pedidoDetalhe.observacao}
+              </div>
+            )}
 
-      <div style={{ fontSize: 12 }}>
-        {item.quantidade_unidades || 1} un •{' '}
-        {formatarQuantidade(item.quantidade, item.tipo_venda, item.unidade)} ×{' '}
-        {formatarMoeda(item.preco_unitario)}
+          {pedidoDetalhe.pedido_itens?.map((item) => (
+  <div key={item.id} className="item-carrinho item-carrinho-completo">
+    <div className="item-carrinho-topo">
+      <div>
+        <strong>{item.nome_produto}</strong>
+
+        <div style={{ fontSize: 12 }}>
+          Quantia: {item.quantidade_unidades || 1} •{' '}
+          {formatarQuantidade(item.quantidade, item.tipo_venda, item.unidade)} ×{' '}
+          {formatarMoeda(item.preco_unitario)}
+        </div>
       </div>
+
+      <strong>{formatarMoeda(item.subtotal)}</strong>
     </div>
 
-    <strong>{formatarMoeda(item.subtotal)}</strong>
+    {item.observacao && (
+      <div className="observacao-historico">📝 {item.observacao}</div>
+    )}
   </div>
 ))}
 

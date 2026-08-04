@@ -76,3 +76,20 @@ export async function excluirProduto(id) {
   const { error } = await supabase.from('produtos').delete().eq('id', id)
   if (error) throw error
 }
+
+// Atualiza só o preço cadastrado do produto (usado quando o preço é
+// ajustado direto no carrinho de um pedido).
+export async function atualizarPrecoProduto(id, preco) {
+  const precoNumerico = Number(preco)
+  if (!Number.isFinite(precoNumerico) || precoNumerico < 0) return null
+
+  const { data, error } = await supabase
+    .from('produtos')
+    .update({ preco: precoNumerico })
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}

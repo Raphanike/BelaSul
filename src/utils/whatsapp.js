@@ -28,15 +28,18 @@ function montarLinhaItem(item) {
     item.quantidade_unidades !== null &&
     item.quantidade_unidades !== undefined &&
     item.quantidade_unidades !== ''
-      ? `${item.quantidade_unidades} un • `
+      ? `Quantia: ${item.quantidade_unidades} • `
       : ''
 
   const rotulo = tipoVenda === 'peso' ? 'Peso' : 'Qtd'
 
+  const linhaObservacao = item.observacao ? `\n  Obs.: ${item.observacao}` : ''
+
   return (
     `• ${item.nome_produto}\n` +
     `  ${unidadesFisicas}${rotulo}: ${quantidadeFormatada}\n` +
-    `  Unit.: ${formatarMoeda(item.preco_unitario)} | Subtotal: ${formatarMoeda(item.subtotal)}`
+    `  Unit.: ${formatarMoeda(item.preco_unitario)} | Subtotal: ${formatarMoeda(item.subtotal)}` +
+    linhaObservacao
   )
 }
 

@@ -330,6 +330,30 @@ a {
   transform: translateY(-4px);
 }
 
+.produto-card.selecionado {
+  border: 3px solid var(--azul-marinho);
+  box-shadow: 0 4px 18px rgba(43, 57, 144, 0.35);
+  background: #eef0fb;
+}
+
+.produto-card {
+  position: relative;
+  border: 3px solid transparent;
+}
+
+.selo-selecionado {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: var(--azul-marinho);
+  color: var(--branco);
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 4px 9px;
+  border-radius: 20px;
+  z-index: 2;
+}
+
 .produto-card .imagem-produto {
   width: 100%;
   height: 150px;
@@ -492,26 +516,142 @@ a {
 }
 
 /* ---------- Pedido / Carrinho ---------- */
+
+/* No desktop o carrinho fica fixo na tela (sticky) com altura máxima
+   e rolagem interna, para não "sumir" quando tem muitos itens: o
+   cabeçalho e o botão de finalizar continuam sempre visíveis. */
 .carrinho {
   background: var(--branco);
   border-radius: var(--raio-borda);
   box-shadow: var(--sombra);
-  padding: 20px;
   position: sticky;
   top: 90px;
+  max-height: calc(100vh - 110px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.carrinho-cabecalho {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 20px 0 20px;
+  flex-shrink: 0;
+}
+
+.carrinho-cabecalho h2 {
+  margin-bottom: 0;
+}
+
+.carrinho-fechar {
+  display: none;
+  background: var(--cinza-claro);
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  font-size: 1rem;
+  cursor: pointer;
+  color: var(--azul-marinho-escuro);
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.carrinho-itens-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 20px 0 20px;
+}
+
+.carrinho-rodape {
+  flex-shrink: 0;
+  padding: 14px 20px 20px 20px;
+  border-top: 1px solid var(--cinza-claro);
+  background: var(--branco);
+}
+
+.campo-observacao-geral {
+  margin-bottom: 14px;
+}
+
+/* Botão flutuante: escondido no desktop por padrão */
+.carrinho-flutuante {
+  display: none;
+}
+
+.carrinho-backdrop {
+  display: none;
 }
 
 .item-carrinho {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 0;
+  padding: 14px 0;
   border-bottom: 1px solid var(--cinza-claro);
-  gap: 10px;
 }
 
 .item-carrinho:last-child {
   border-bottom: none;
+}
+
+.item-carrinho-completo {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.item-carrinho-topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.item-carrinho-campos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.rotulo-campo-pequeno {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--azul-marinho);
+  margin-bottom: 4px;
+}
+
+.campo-pequeno {
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 2px solid var(--cinza-claro);
+  background: var(--branco);
+  color: var(--cinza-texto);
+  font-size: 0.95rem;
+}
+
+.campo-pequeno:focus {
+  border-color: var(--dourado);
+}
+
+.item-carrinho-observacao {
+  display: flex;
+  flex-direction: column;
+}
+
+.campo-observacao {
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 2px solid var(--cinza-claro);
+  background: var(--branco);
+  color: var(--cinza-texto);
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.campo-observacao:focus {
+  border-color: var(--dourado);
 }
 
 .total-carrinho {
@@ -522,7 +662,7 @@ a {
   font-weight: 900;
   color: var(--azul-marinho);
   padding-top: 14px;
-  margin-top: 10px;
+  margin-top: 0;
   border-top: 3px solid var(--dourado);
 }
 
@@ -549,8 +689,69 @@ a {
   .app-main {
     padding: 18px;
   }
+
+  /* Carrinho vira uma gaveta que desliza da direita, aberta pelo
+     botão flutuante. Facilita muito em celular/tablet, já que não
+     precisa mais rolar até o fim do catálogo para ver o carrinho. */
   .carrinho {
-    position: static;
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(420px, 92vw);
+    max-height: 100vh;
+    border-radius: 0;
+    transform: translateX(100%);
+    transition: transform 0.28s ease;
+    z-index: 210;
+  }
+
+  .carrinho.carrinho-aberto {
+    transform: translateX(0);
+  }
+
+  .carrinho-fechar {
+    display: block;
+  }
+
+  .carrinho-flutuante {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 150;
+    background: var(--dourado);
+    color: var(--azul-marinho-escuro);
+    border: none;
+    border-radius: 50px;
+    padding: 14px 20px;
+    font-weight: 800;
+    font-size: 1.05rem;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+  }
+
+  .carrinho-flutuante-badge {
+    background: var(--vermelho-alerta);
+    color: var(--branco);
+    border-radius: 50%;
+    min-width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    padding: 0 4px;
+  }
+
+  .carrinho-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(30, 39, 102, 0.55);
+    z-index: 200;
   }
 }
 
@@ -582,6 +783,48 @@ a {
 
 @media (max-width: 520px) {
   .linha-form-dupla { grid-template-columns: 1fr; }
+}
+
+.check-enviado {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  cursor: pointer;
+}
+
+.check-enviado input {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.tag-enviado,
+.tag-pendente {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.tag-enviado {
+  background: #e9f8ee;
+  color: var(--verde-sucesso);
+}
+
+.tag-pendente {
+  background: #fdf3e6;
+  color: var(--dourado);
+}
+
+.observacao-historico {
+  background: #fdf3e6;
+  color: #7a5b1e;
+  font-size: 0.85rem;
+  padding: 8px 10px;
+  border-radius: 8px;
+  margin-top: 4px;
 }
 
 .historico-item {

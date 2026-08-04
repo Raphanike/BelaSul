@@ -79,8 +79,11 @@ export async function gerarPdfPedido(pedido) {
   // Tabela de itens
   const itens = pedido.pedido_itens || pedido.itens || []
  const corpoTabela = itens.map((item) => [
-  item.nome_produto,
-  `${item.quantidade_unidades || 1} un / ${formatarQuantidade(
+  item.observacao
+    ? `${item.nome_produto}\nObs.: ${item.observacao}`
+    : item.nome_produto,
+  `Quantia: ${item.quantidade_unidades || 1}
+${formatarQuantidade(
     item.quantidade,
     item.tipo_venda,
     item.unidade

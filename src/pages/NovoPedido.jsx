@@ -6,7 +6,7 @@ import Loading from '../components/Loading'
 import { useDebounce } from '../hooks/useDebounce'
 import { useAuthContext } from '../hooks/AuthContext'
 import { listarClientes } from '../services/clientesService'
-import { listarProdutos } from '../services/produtosService'
+import { listarProdutos, atualizarPrecoProduto } from '../services/produtosService'
 import {
   criarPedido,
   atualizarPedido,
@@ -36,6 +36,8 @@ export default function NovoPedido() {
 
   // Carrinho
   const [carrinho, setCarrinho] = useState([])
+  const [carrinhoAberto, setCarrinhoAberto] = useState(false)
+  const [observacaoPedido, setObservacaoPedido] = useState('')
 
   // Estado geral
   const [erro, setErro] = useState('')
@@ -105,6 +107,8 @@ export default function NovoPedido() {
           telefone: pedido.clientes.telefone,
         })
 
+        setObservacaoPedido(pedido.observacao || '')
+
         setCarrinho(
           pedido.pedido_itens.map((item) => {
             const tipoVenda =
@@ -120,9 +124,14 @@ export default function NovoPedido() {
             return {
               produto_id: item.produto_id,
               nome_produto: item.nome_produto,
-              preco_unitario: item.preco_unitario,
 
-              // Campo informativo
+              preco_unitario:
+                item.preco_unitario === null ||
+                item.preco_unitario === undefined
+                  ? ''
+                  : String(item.preco_unitario),
+
+              // Campo informativo. Aceita texto livre (ex: "1/2").
               quantidade_unidades:
                 item.quantidade_unidades === null ||
                 item.quantidade_unidades === undefined
@@ -135,6 +144,8 @@ export default function NovoPedido() {
                 item.quantidade === undefined
                   ? ''
                   : String(item.quantidade),
+
+              observacao: item.observacao || '',
 
               subtotal: Number(item.subtotal || 0),
               tipo_venda: tipoVenda,
@@ -155,6 +166,7 @@ export default function NovoPedido() {
 
     if (jaExiste) {
       setErro('Este produto já está no pedido. Ajuste a quantidade no resumo.')
+      setCarrinhoAberto(true)
       return
     }
 
@@ -166,15 +178,18 @@ export default function NovoPedido() {
     const novoItem = {
       produto_id: produto.id,
       nome_produto: produto.nome,
-      preco_unitario: produto.preco,
+      preco_unitario: String(produto.preco ?? ''),
       tipo_venda: tipoVenda,
       unidade,
 
-      // Unidades = informativo, não entra no cálculo
+      // Quantia = campo informativo, não entra no cálculo. Texto livre.
       quantidade_unidades: '',
 
       // Quantidade = cálculo. Se for peso, vira Peso.
       quantidade: '',
+
+      // Observação livre do item (aparece no histórico)
+      observacao: '',
 
       subtotal: 0,
     }
@@ -183,14 +198,14 @@ export default function NovoPedido() {
   }
 
   function atualizarUnidades(produtoId, valorDigitado) {
-    const unidades = limparNumeroDigitado(valorDigitado, false)
-
+    // Campo "Quantia": informativo, aceita texto livre
+    // (números, letras, barra, etc. Ex: "1/2", "3 cx").
     setCarrinho((atual) =>
       atual.map((item) =>
         item.produto_id === produtoId
           ? {
               ...item,
-              quantidade_unidades: unidades,
+              quantidade_unidades: valorDigitado,
             }
           : item
       )
@@ -209,11 +224,95 @@ export default function NovoPedido() {
           ...item,
           quantidade,
           subtotal: calcularSubtotal(
-            item.preco_unitario,
+            numeroDoInput(item.preco_unitario),
             numeroDoInput(quantidade)
           ),
         }
       })
+    )
+  }
+
+  function atualizarPrecoItem(produtoId, valorDigitado) {
+    const precoTexto = limparNumeroDigitado(valorDigitado, true)
+
+    setCarrinho((atual) =>
+      atual.map((item) => {
+        if (item.produto_id !== produtoId) return item
+
+        return {
+          ...item,
+          preco_unitario: precoTexto,
+          subtotal: calcularSubtotal(
+            numeroDoInput(precoTexto),
+            numeroDoInput(item.quantidade)
+          ),
+        }
+      })
+    )
+  }
+
+  // Quando o vendedor sai do campo de preço, salva também o novo
+  // preço no cadastro do produto (além de valer para este pedido).
+  async function salvarPrecoNoCadastro(produtoId, valorAtual) {
+    const precoNumerico = numeroDoInput(valorAtual)
+    if (precoNumerico <= 0) return
+
+    try {
+      await atualizarPrecoProduto(produtoId, precoNumerico)
+    } catch {
+      // Falha silenciosa: o pedido continua normalmente mesmo que o
+      // preço não tenha sido atualizado no cadastro.
+    }
+  }
+
+  function obterOpcaoVenda(item) {
+    if (item.tipo_venda === 'peso') return 'peso'
+    if (item.unidade === 'cx') return 'caixa'
+    return 'unidade'
+  }
+
+  function atualizarTipoVendaItem(produtoId, novaOpcaoVenda) {
+    setCarrinho((atual) =>
+      atual.map((item) => {
+        if (item.produto_id !== produtoId) return item
+
+        const novoTipoVenda =
+          novaOpcaoVenda === 'peso' ? 'peso' : 'quantidade'
+
+        const novaUnidade =
+          novaOpcaoVenda === 'peso'
+            ? 'kg'
+            : novaOpcaoVenda === 'caixa'
+              ? 'cx'
+              : 'un'
+
+        // Unidade e caixa usam números inteiros; peso aceita casas decimais.
+        const quantidadeAjustada =
+          novoTipoVenda === 'peso'
+            ? item.quantidade
+            : limparNumeroDigitado(item.quantidade, false)
+
+        return {
+          ...item,
+          tipo_venda: novoTipoVenda,
+          unidade: novaUnidade,
+          quantidade: quantidadeAjustada,
+          subtotal: calcularSubtotal(
+            numeroDoInput(item.preco_unitario),
+            numeroDoInput(quantidadeAjustada)
+          ),
+        }
+      })
+    )
+  }
+
+  function atualizarObservacaoItem(produtoId, valorDigitado) {
+    setCarrinho((atual) =>
+      atual.map((item) =>
+        item.produto_id === produtoId
+          ? { ...item, observacao: valorDigitado }
+          : item
+      )
     )
   }
 
@@ -236,32 +335,27 @@ export default function NovoPedido() {
       return
     }
 
-    const itemSemQuantidade = carrinho.find(
-      (item) => numeroDoInput(item.quantidade) <= 0
-    )
-
-    if (itemSemQuantidade) {
-      setErro(
-        `Informe ${
-          itemSemQuantidade.tipo_venda === 'peso' ? 'o peso' : 'a quantidade'
-        } de ${itemSemQuantidade.nome_produto}.`
-      )
-      return
-    }
+    // Observação: itens podem ser salvos com quantidade 0/em branco.
+    // Isso permite que uma pessoa lance a venda e outra preencha o
+    // peso/quantidade depois (ex: produto pesado na hora da entrega).
 
     const itensParaSalvar = carrinho.map((item) => {
       const quantidadeNumerica = numeroDoInput(item.quantidade)
+      const precoNumerico = numeroDoInput(item.preco_unitario)
 
       return {
         ...item,
         quantidade: quantidadeNumerica,
+        preco_unitario: precoNumerico,
+        // Campo informativo: mantém como texto livre (ex: "1/2").
         quantidade_unidades:
           item.quantidade_unidades === '' ||
           item.quantidade_unidades === null ||
           item.quantidade_unidades === undefined
             ? null
-            : numeroDoInput(item.quantidade_unidades),
-        subtotal: calcularSubtotal(item.preco_unitario, quantidadeNumerica),
+            : String(item.quantidade_unidades).trim(),
+        observacao: item.observacao ? String(item.observacao).trim() : null,
+        subtotal: calcularSubtotal(precoNumerico, quantidadeNumerica),
       }
     })
 
@@ -276,18 +370,21 @@ export default function NovoPedido() {
         await atualizarPedido(id, {
           clienteId: clienteSelecionado.id,
           itens: itensParaSalvar,
+          observacao: observacaoPedido,
         })
 
         pedidoSalvo = {
           id,
           total: totalParaSalvar,
           pedido_itens: itensParaSalvar,
+          observacao: observacaoPedido,
         }
       } else {
         pedidoSalvo = await criarPedido({
           clienteId: clienteSelecionado.id,
           itens: itensParaSalvar,
           userId: usuario?.id,
+          observacao: observacaoPedido,
         })
 
         pedidoSalvo = {
@@ -319,6 +416,8 @@ export default function NovoPedido() {
     setBuscaCliente('')
     setBuscaProduto('')
     setErro('')
+    setCarrinhoAberto(false)
+    setObservacaoPedido('')
   }
 
   if (pedidoConcluido) {
@@ -455,170 +554,230 @@ export default function NovoPedido() {
               <Loading texto="Buscando produtos..." />
             ) : (
               <div className="grid-cards">
-                {produtosEncontrados.map((produto) => (
-                  <div
-                    key={produto.id}
-                    className="produto-card"
-                    onClick={() => adicionarProduto(produto)}
-                  >
-                    {produto.imagem_url && (
-                      <img
-                        src={produto.imagem_url}
-                        alt={produto.nome}
-                        className="imagem-produto"
-                      />
-                    )}
+                {produtosEncontrados.map((produto) => {
+                  const selecionado = carrinho.some(
+                    (item) => item.produto_id === produto.id
+                  )
 
-                    <div className="conteudo-produto">
-                      <span className="nome-produto">{produto.nome}</span>
+                  return (
+                    <div
+                      key={produto.id}
+                      className={
+                        'produto-card' + (selecionado ? ' selecionado' : '')
+                      }
+                      onClick={() => adicionarProduto(produto)}
+                    >
+                      {selecionado && (
+                        <span className="selo-selecionado">✓ No pedido</span>
+                      )}
 
-                      <span className="preco-produto">
-                        {formatarMoeda(produto.preco)}
-                        {produto.tipo_venda === 'peso'
-                          ? ` / ${produto.unidade || 'kg'}`
-                          : ' / un'}
-                      </span>
+                      {produto.imagem_url && (
+                        <img
+                          src={produto.imagem_url}
+                          alt={produto.nome}
+                          className="imagem-produto"
+                        />
+                      )}
 
-                      <button className="btn btn-primario">
-                        + Adicionar
-                      </button>
+                      <div className="conteudo-produto">
+                        <span className="nome-produto">{produto.nome}</span>
+
+                        <span className="preco-produto">
+                          {formatarMoeda(produto.preco)}
+                          {produto.tipo_venda === 'peso'
+                            ? ` / ${produto.unidade || 'kg'}`
+                            : ' / un'}
+                        </span>
+
+                        <button
+                          className={
+                            'btn ' +
+                            (selecionado ? 'btn-secundario' : 'btn-primario')
+                          }
+                        >
+                          {selecionado ? '✓ Adicionado' : '+ Adicionar'}
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
         </div>
 
-        <div className="carrinho">
-          <h2>Resumo do Pedido</h2>
+        {/* Botão flutuante do carrinho — some no desktop, aparece no
+            mobile/tablet (ver CSS) */}
+        <button
+          type="button"
+          className="carrinho-flutuante"
+          onClick={() => setCarrinhoAberto(true)}
+        >
+          🛒 {carrinho.length > 0 && (
+            <span className="carrinho-flutuante-badge">{carrinho.length}</span>
+          )}
+          <span>{formatarMoeda(total)}</span>
+        </button>
 
-          {carrinho.length === 0 ? (
-            <p className="vazio">Nenhum produto adicionado ainda.</p>
-          ) : (
-            <>
-              {carrinho.map((item) => (
-                <div className="item-carrinho" key={item.produto_id}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700 }}>
-                      {item.nome_produto}
-                    </div>
+        {/* Fundo escurecido atrás do carrinho quando aberto no mobile */}
+        {carrinhoAberto && (
+          <div
+            className="carrinho-backdrop"
+            onClick={() => setCarrinhoAberto(false)}
+          />
+        )}
 
-                    <div style={{ fontSize: '0.9rem', color: '#666' }}>
-                      {formatarMoeda(item.preco_unitario)}
-                      {item.tipo_venda === 'peso'
-                        ? ` / ${item.unidade}`
-                        : ' / un'}
-                    </div>
+        <div className={'carrinho' + (carrinhoAberto ? ' carrinho-aberto' : '')}>
+          <div className="carrinho-cabecalho">
+            <h2>Resumo do Pedido</h2>
+            <button
+              type="button"
+              className="carrinho-fechar"
+              onClick={() => setCarrinhoAberto(false)}
+              aria-label="Fechar carrinho"
+            >
+              ✕
+            </button>
+          </div>
 
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 10,
-                        marginTop: 6,
-                        flexWrap: 'wrap',
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontSize: 12 }}>Unidades</div>
+          <div className="carrinho-itens-scroll">
+            {carrinho.length === 0 ? (
+              <p className="vazio">Nenhum produto adicionado ainda.</p>
+            ) : (
+              carrinho.map((item) => (
+                <div className="item-carrinho item-carrinho-completo" key={item.produto_id}>
+                  <div className="item-carrinho-topo">
+                    <div style={{ fontWeight: 700 }}>{item.nome_produto}</div>
 
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={item.quantidade_unidades ?? ''}
-                          placeholder="Ex: 10"
-                          onChange={(e) =>
-                            atualizarUnidades(item.produto_id, e.target.value)
-                          }
-                          style={{
-                            width: 90,
-                            padding: 8,
-                            borderRadius: 8,
-                            border: '2px solid var(--cinza-claro)',
-                          }}
-                        />
+                    <div style={{ textAlign: 'right' }}>
+                      <div
+                        style={{ fontWeight: 800, color: 'var(--azul-marinho)' }}
+                      >
+                        {formatarMoeda(item.subtotal)}
                       </div>
 
-                      <div>
-                        <div style={{ fontSize: 12 }}>
-                          {item.tipo_venda === 'peso'
-                            ? 'Peso'
-                            : 'Quantidade'}
-                        </div>
-
-                        <input
-                          type="text"
-                          inputMode={
-                            item.tipo_venda === 'peso'
-                              ? 'decimal'
-                              : 'numeric'
-                          }
-                          value={item.quantidade ?? ''}
-                          placeholder={
-                            item.tipo_venda === 'peso'
-                              ? 'Ex: 25.5'
-                              : 'Ex: 3'
-                          }
-                          onChange={(e) =>
-                            atualizarQuantidade(
-                              item.produto_id,
-                              e.target.value
-                            )
-                          }
-                          style={{
-                            width: 100,
-                            padding: 8,
-                            borderRadius: 8,
-                            border: '2px solid var(--cinza-claro)',
-                          }}
-                        />
-                      </div>
+                      <button
+                        className="btn btn-perigo btn-icone"
+                        style={{ marginTop: 6 }}
+                        onClick={() => removerItem(item.produto_id)}
+                      >
+                        Remover
+                      </button>
                     </div>
                   </div>
 
-                  <div style={{ textAlign: 'right' }}>
-                    <div
-                      style={{
-                        fontWeight: 800,
-                        color: 'var(--azul-marinho)',
-                      }}
-                    >
-                      {formatarMoeda(item.subtotal)}
+                  <div className="item-carrinho-campos">
+                    <div>
+                      <div className="rotulo-campo-pequeno">Vendido por</div>
+                      <select
+                        value={obterOpcaoVenda(item)}
+                        onChange={(e) =>
+                          atualizarTipoVendaItem(item.produto_id, e.target.value)
+                        }
+                        className="campo-pequeno"
+                      >
+                        <option value="unidade">Unidade</option>
+                        <option value="peso">Peso</option>
+                        <option value="caixa">Caixa</option>
+                      </select>
                     </div>
 
-                    <button
-                      className="btn btn-perigo btn-icone"
-                      style={{ marginTop: 6 }}
-                      onClick={() => removerItem(item.produto_id)}
-                    >
-                      Remover
-                    </button>
+                    <div>
+                      <div className="rotulo-campo-pequeno">Preço unit. (R$)</div>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={item.preco_unitario ?? ''}
+                        placeholder="Ex: 25,90"
+                        onChange={(e) =>
+                          atualizarPrecoItem(item.produto_id, e.target.value)
+                        }
+                        onBlur={(e) =>
+                          salvarPrecoNoCadastro(item.produto_id, e.target.value)
+                        }
+                        className="campo-pequeno"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="rotulo-campo-pequeno">Quantia</div>
+                      <input
+                        type="text"
+                        value={item.quantidade_unidades ?? ''}
+                        placeholder="Ex: 10 ou 1/2"
+                        onChange={(e) =>
+                          atualizarUnidades(item.produto_id, e.target.value)
+                        }
+                        className="campo-pequeno"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="rotulo-campo-pequeno">
+                        {item.tipo_venda === 'peso' ? 'Peso (kg)' : 'Quantidade'}
+                      </div>
+                      <input
+                        type="text"
+                        inputMode={item.tipo_venda === 'peso' ? 'decimal' : 'numeric'}
+                        value={item.quantidade ?? ''}
+                        placeholder={item.tipo_venda === 'peso' ? 'Ex: 25.5' : 'Ex: 3'}
+                        onChange={(e) =>
+                          atualizarQuantidade(item.produto_id, e.target.value)
+                        }
+                        className="campo-pequeno"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="item-carrinho-observacao">
+                    <div className="rotulo-campo-pequeno">Observação</div>
+                    <textarea
+                      value={item.observacao ?? ''}
+                      placeholder="Ex: pesar na entrega, embalagem trocada..."
+                      onChange={(e) =>
+                        atualizarObservacaoItem(item.produto_id, e.target.value)
+                      }
+                      rows={2}
+                      className="campo-observacao"
+                    />
                   </div>
                 </div>
-              ))}
+              ))
+            )}
+          </div>
 
-              <div className="total-carrinho">
-                <span>Total</span>
-                <span>{formatarMoeda(total)}</span>
-              </div>
-            </>
-          )}
+          <div className="carrinho-rodape">
+            <div className="campo-observacao-geral">
+              <div className="rotulo-campo-pequeno">Observação geral do pedido</div>
+              <textarea
+                value={observacaoPedido}
+                onChange={(e) => setObservacaoPedido(e.target.value)}
+                placeholder="Ex: entregar até sexta, cliente pede nota fiscal..."
+                rows={2}
+                className="campo-observacao"
+              />
+            </div>
 
-          <button
-            className="btn btn-primario btn-grande"
-            style={{ marginTop: 18 }}
-            onClick={handleFinalizar}
-            disabled={finalizando || carrinho.length === 0}
-          >
-            {finalizando
-              ? id
-                ? 'Salvando...'
-                : 'Finalizando...'
-              : id
-                ? '💾 Salvar Alterações'
-                : '✅ Finalizar Pedido'}
-          </button>
+            <div className="total-carrinho">
+              <span>Total</span>
+              <span>{formatarMoeda(total)}</span>
+            </div>
+
+            <button
+              className="btn btn-primario btn-grande"
+              style={{ marginTop: 18 }}
+              onClick={handleFinalizar}
+              disabled={finalizando || carrinho.length === 0}
+            >
+              {finalizando
+                ? id
+                  ? 'Salvando...'
+                  : 'Finalizando...'
+                : id
+                  ? '💾 Salvar Alterações'
+                  : '✅ Finalizar Pedido'}
+            </button>
+          </div>
         </div>
       </div>
     </Layout>

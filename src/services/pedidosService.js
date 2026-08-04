@@ -22,10 +22,18 @@ function normalizarNumero(valor) {
 }
 
 function normalizarUnidades(valor) {
+  // Campo informativo (Quantia): aceita texto livre,
+  // como "1/2", "3 cx", etc. Não converte mais para número.
   if (valor === '' || valor === null || valor === undefined) return null
 
-  const numero = Number(valor)
-  return Number.isFinite(numero) ? numero : null
+  const texto = String(valor).trim()
+  return texto === '' ? null : texto
+}
+
+function normalizarObservacao(valor) {
+  if (valor === '' || valor === null || valor === undefined) return null
+  const texto = String(valor).trim()
+  return texto === '' ? null : texto
 }
 
 function resolverTipoVenda(item) {
@@ -45,7 +53,7 @@ function montarItemParaSalvar(item, pedidoId) {
   const tipoVenda = resolverTipoVenda(item)
   const unidade = resolverUnidade(item, tipoVenda)
 
-  const precoUnitario = arredondar(item.preco_unitario)
+  const precoUnitario = arredondar(normalizarNumero(item.preco_unitario))
   const quantidade = normalizarNumero(item.quantidade)
   const subtotal = calcularSubtotal(precoUnitario, quantidade)
 
@@ -59,15 +67,19 @@ function montarItemParaSalvar(item, pedidoId) {
     unidade,
 
     // Campo informativo. Pode ser null.
-    // Não entra no cálculo.
+    // Não entra no cálculo. Aceita texto livre (ex: "1/2").
     quantidade_unidades: normalizarUnidades(item.quantidade_unidades),
 
     // Campo que calcula.
     // Se for kg, representa peso.
     // Se for unidade, representa quantidade vendida.
+    // Pode ser 0 (fica pendente de pesagem/preenchimento posterior).
     quantidade,
 
     subtotal,
+
+    // Observação livre do item, aparece no histórico.
+    observacao: normalizarObservacao(item.observacao),
   }
 }
 
@@ -87,7 +99,7 @@ function normalizarPedidoItens(pedido) {
   }
 }
 
-export async function criarPedido({ clienteId, itens, userId }) {
+export async function criarPedido({ clienteId, itens, userId, observacao }) {
   if (!clienteId) throw new Error('Selecione um cliente para o pedido.')
   if (!itens || itens.length === 0) throw new Error('Adicione ao menos um produto ao pedido.')
 
@@ -95,7 +107,7 @@ export async function criarPedido({ clienteId, itens, userId }) {
     const tipoVenda = resolverTipoVenda(item)
     const unidade = resolverUnidade(item, tipoVenda)
 
-    const precoUnitario = arredondar(item.preco_unitario)
+    const precoUnitario = arredondar(normalizarNumero(item.preco_unitario))
     const quantidade = normalizarNumero(item.quantidade)
     const subtotal = calcularSubtotal(precoUnitario, quantidade)
 
@@ -107,6 +119,7 @@ export async function criarPedido({ clienteId, itens, userId }) {
       quantidade_unidades: normalizarUnidades(item.quantidade_unidades),
       quantidade,
       subtotal,
+      observacao: normalizarObservacao(item.observacao),
     }
   })
 
@@ -118,7 +131,8 @@ export async function criarPedido({ clienteId, itens, userId }) {
       {
         cliente_id: clienteId,
         total,
-        status: 'finalizado',
+        status: 'pendente',
+        observacao: normalizarObservacao(observacao),
         user_id: userId || null,
       },
     ])
@@ -202,6 +216,17 @@ export async function buscarPedidoPorId(id) {
   return normalizarPedidoItens(data)
 }
 
+// Alterna o status do pedido entre "pendente" e "feito" (usado no
+// check "Pedido Enviado" do histórico).
+export async function marcarStatusPedido(id, status) {
+  const { error } = await supabase
+    .from('pedidos')
+    .update({ status })
+    .eq('id', id)
+
+  if (error) throw error
+}
+
 export async function excluirPedido(id) {
   const { error } = await supabase
     .from('pedidos')
@@ -258,7 +283,7 @@ export async function obterEstatisticasDashboard(date = new Date()) {
   }
 }
 
-export async function atualizarPedido(id, { clienteId, itens }) {
+export async function atualizarPedido(id, { clienteId, itens, observacao }) {
   if (!clienteId) throw new Error('Selecione um cliente.')
   if (!itens || itens.length === 0) throw new Error('Adicione ao menos um produto.')
 
@@ -266,7 +291,7 @@ export async function atualizarPedido(id, { clienteId, itens }) {
     const tipoVenda = resolverTipoVenda(item)
     const unidade = resolverUnidade(item, tipoVenda)
 
-    const precoUnitario = arredondar(item.preco_unitario)
+    const precoUnitario = arredondar(normalizarNumero(item.preco_unitario))
     const quantidade = normalizarNumero(item.quantidade)
     const subtotal = calcularSubtotal(precoUnitario, quantidade)
 
@@ -278,6 +303,7 @@ export async function atualizarPedido(id, { clienteId, itens }) {
       quantidade_unidades: normalizarUnidades(item.quantidade_unidades),
       quantidade,
       subtotal,
+      observacao: normalizarObservacao(item.observacao),
     }
   })
 
@@ -289,6 +315,7 @@ export async function atualizarPedido(id, { clienteId, itens }) {
     .update({
       cliente_id: clienteId,
       total,
+      observacao: normalizarObservacao(observacao),
     })
     .eq('id', id)
 
